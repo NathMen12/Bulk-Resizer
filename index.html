@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Image Resizer - Ultra Engine Final</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-light: #e0e7ff;
+            --bg: #f3f4f6;
+            --card: #ffffff;
+            --success: #10b981;
+            --danger: #ef4444;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg);
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        .container {
+            max-width: 1100px; width: 100%;
+            background: var(--card); padding: 2rem;
+            border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-flex {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 25px; border-bottom: 2px solid var(--bg); padding-bottom: 15px;
+        }
+
+        h1 { color: var(--text-main); margin: 0; font-size: 1.6rem; font-weight: 800; }
+
+        .lang-select {
+            padding: 8px 12px; border-radius: 8px; border: 1px solid #d1d5db;
+            background: white; cursor: pointer; font-weight: 600;
+        }
+
+        .controls-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px; margin-bottom: 25px; padding: 20px;
+            background: #f9fafb; border-radius: 12px; border: 1px solid #e5e7eb;
+        }
+
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-weight: 700; color: #4b5563; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        input, select, button { padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+
+        .dimension-inputs { display: flex; gap: 8px; }
+        .dimension-inputs input { width: 50%; }
+
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-main { flex: 3; background-color: var(--primary); color: white; border: none; cursor: pointer; font-weight: 700; text-transform: uppercase; }
+        .btn-stop { flex: 1; background-color: var(--danger); color: white; border: none; cursor: pointer; font-weight: 700; text-transform: uppercase; display: none; }
+        
+        button:hover { opacity: 0.9; transform: translateY(-1px); }
+        button:disabled { background-color: #9ca3af; cursor: not-allowed; transform: none; }
+
+        /* Stats */
+        .stats-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: white; padding: 15px; border-radius: 10px; border: 1px solid #e5e7eb; text-align: center; }
+        .stat-val { display: block; font-size: 20px; font-weight: 800; color: var(--primary); }
+        .stat-label { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+
+        /* Tasks & Bars */
+        #activeTasks { margin-bottom: 20px; display: flex; flex-direction: column; gap: 8px; }
+        .task-row { background: white; border: 1px solid #e5e7eb; padding: 10px; border-radius: 8px; }
+        .task-info { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; font-weight: 600; }
+        .task-pct { color: var(--primary); font-family: monospace; }
+        .progress-bar { width: 100%; height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: width 0.1s linear; }
+
+        .total-section { background: #f0fdf4; padding: 15px; border-radius: 10px; border: 1px solid #bbf7d0; margin-bottom: 20px; }
+        .total-bar .progress-fill { background: var(--success); }
+
+        /* Preview area */
+        .preview-container {
+            margin-top: 25px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px; max-height: 500px; overflow-y: auto; border: 2px dashed #d1d5db; padding: 15px; border-radius: 12px;
+        }
+
+        .preview-item { font-size: 10px; text-align: center; background: #f9fafb; padding: 8px; border-radius: 6px; border: 1px solid #eee; }
+        
+        /* IMPORTANT POUR LE PIXEL ART VISUEL */
+        .preview-item img { 
+            width: 100%; height: 100px; object-fit: contain; border-radius: 4px; 
+            image-rendering: -moz-crisp-edges; image-rendering: pixelated; 
+        }
+        .preview-dim { font-weight: bold; color: var(--primary); margin-top: 5px; display: block; }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-flex">
+        <h1 data-key="title">Bulk Resizer Ultra Engine</h1>
+        <select id="langSwitcher" class="lang-select">
+            <option value="fr">🇫🇷 Français</option>
+            <option value="en">🇺🇸 English</option>
+            <option value="es">🇪🇸 Español</option>
+        </select>
+    </div>
+
+    <div class="controls-grid">
+        <div class="control-group">
+            <label data-key="labelImages">Images sources</label>
+            <input type="file" id="fileInput" multiple accept="image/*">
+        </div>
+        <div class="control-group">
+            <label data-key="labelMode">Mode de redimensionnement</label>
+            <select id="resizeMode">
+                <option value="pixels" data-key="optPixels">Pixels Fixes (px)</option>
+                <option value="percent" data-key="optPercent">Pourcentage (%)</option>
+            </select>
+        </div>
+        <div id="pixelGroup" class="control-group">
+            <label data-key="labelDimensions">Dimensions (Largeur x Hauteur)</label>
+            <div class="dimension-inputs">
+                <input type="number" id="targetWidth" value="800">
+                <input type="number" id="targetHeight" value="600">
+            </div>
+        </div>
+        <div id="percentGroup" class="control-group hidden">
+            <label data-key="labelPercent">Échelle de sortie (%)</label>
+            <input type="number" id="targetPercent" value="50" min="1" max="1000">
+        </div>
+        <div class="control-group">
+            <label data-key="labelMethod">Rendu / Qualité</label>
+            <select id="method">
+                <option value="high" data-key="optHigh">Bicubique (Lissage)</option>
+                <option value="medium" data-key="optMed">Bilinaire</option>
+                <option value="pixelated" data-key="optPixel">Nearest Neighbor (Pixel Art)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label data-key="labelParallel">Parallélisme (CPU Tasks)</label>
+            <input type="number" id="parallelLimit" value="4" min="1" max="12">
+        </div>
+    </div>
+
+    <div id="statsArea" class="stats-panel hidden">
+        <div class="stat-card"><span id="statImgSec" class="stat-val">0</span><span class="stat-label" data-key="statSpeed">Img / Sec</span></div>
+        <div class="stat-card"><span id="statCount" class="stat-val">0 / 0</span><span class="stat-label" data-key="statTotal">Traitées</span></div>
+        <div class="stat-card"><span id="statETA" class="stat-val">--</span><span class="stat-label" data-key="statTime">Temps restant</span></div>
+    </div>
+
+    <div class="btn-group">
+        <button id="resizeBtn" class="btn-main" data-key="btnStart">Démarrer le moteur</button>
+        <button id="stopBtn" class="btn-stop" data-key="btnStop">STOP / ANNULER</button>
+    </div>
+
+    <div id="totalProgress" class="total-section hidden">
+        <div class="task-info"><span data-key="progTotal">PROGRESSION TOTALE</span> <span id="totalPctText">0%</span></div>
+        <div class="progress-bar total-bar"><div id="totalFill" class="progress-fill"></div></div>
+    </div>
+
+    <div id="activeTasks"></div>
+
+    <button id="downloadZip" class="hidden" style="width:100%; background:var(--success); padding:18px; color:white; font-weight:bold; cursor:pointer; border:none; border-radius:8px; font-size:16px;" data-key="btnDownload">TÉLÉCHARGER LE ZIP</button>
+
+    <div id="previewArea" class="preview-container"></div>
+</div>
+
+<script>
+    const translations = {
+        fr: {
+            title: "Bulk Resizer Ultra Engine",
+            labelImages: "Images sources", labelMode: "Mode de redimensionnement", optPixels: "Pixels Fixes (px)", optPercent: "Pourcentage (%)",
+            labelDimensions: "Dimensions (L x H)", labelPercent: "Échelle de sortie (%)", labelMethod: "Rendu / Qualité",
+            optHigh: "Bicubique (Lissage)", optMed: "Bilinaire", optPixel: "Nearest Neighbor (Pixel Art)",
+            labelParallel: "Tâches simultanées", statSpeed: "Img / Sec", statTotal: "Traitées",
+            statTime: "Temps restant", btnStart: "Démarrer le moteur", btnStop: "STOP / ANNULER",
+            progTotal: "PROGRESSION TOTALE", btnDownload: "TÉLÉCHARGER LE ZIP", alert: "Sélectionnez des images !"
+        },
+        en: {
+            title: "Bulk Resizer Ultra Engine",
+            labelImages: "Source Images", labelMode: "Resize Mode", optPixels: "Fixed Pixels (px)", optPercent: "Percentage (%)",
+            labelDimensions: "Dimensions (W x H)", labelPercent: "Output Scale (%)", labelMethod: "Render Quality",
+            optHigh: "Bicubic (Smooth)", optMed: "Bilinear", optPixel: "Nearest Neighbor (Pixel Art)",
+            labelParallel: "Concurrent Tasks", statSpeed: "Img / Sec", statTotal: "Processed",
+            statTime: "Remaining Time", btnStart: "Start Engine", btnStop: "STOP / CANCEL",
+            progTotal: "TOTAL PROGRESS", btnDownload: "DOWNLOAD ZIP", alert: "Please select images!"
+        },
+        es: {
+            title: "Motor de Redimensionado Ultra",
+            labelImages: "Imágenes de origen", labelMode: "Modo de tamaño", optPixels: "Píxeles fijos (px)", optPercent: "Porcentaje (%)",
+            labelDimensions: "Dimensiones (A x A)", labelPercent: "Escala (%)", labelMethod: "Calidad de renderizado",
+            optHigh: "Bicúbico (Suave)", optMed: "Bilineal", optPixel: "Nearest Neighbor (Pixel Art)",
+            labelParallel: "Tareas simultáneas", statSpeed: "Img / Sec", statTotal: "Procesadas",
+            statTime: "Tiempo restante", btnStart: "Iniciar motor", btnStop: "STOP / CANCELAR",
+            progTotal: "PROGRESO TOTAL", btnDownload: "DESCARGAR ZIP", alert: "¡Selecciona algunas imágenes!"
+        }
+    };
+
+    // UI Switches
+    const resizeMode = document.getElementById('resizeMode');
+    const pixelGroup = document.getElementById('pixelGroup');
+    const percentGroup = document.getElementById('percentGroup');
+
+    resizeMode.addEventListener('change', () => {
+        const isPercent = resizeMode.value === 'percent';
+        pixelGroup.classList.toggle('hidden', isPercent);
+        percentGroup.classList.toggle('hidden', !isPercent);
+    });
+
+    let processedFiles = [];
+    let startTime;
+    let isRunning = false;
+    let queue = [];
+    let finishedCount = 0;
+    let totalToProcess = 0;
+    let etaInterval;
+
+    const stopBtn = document.getElementById('stopBtn');
+    const resizeBtn = document.getElementById('resizeBtn');
+
+    stopBtn.addEventListener('click', () => {
+        isRunning = false;
+        queue = [];
+        stopBtn.style.display = "none";
+        resizeBtn.disabled = false;
+        clearInterval(etaInterval);
+        document.getElementById('activeTasks').innerHTML = "";
+        document.getElementById('statETA').innerText = "STOPPED";
+    });
+
+    resizeBtn.addEventListener('click', async () => {
+        const files = Array.from(document.getElementById('fileInput').files);
+        if (files.length === 0) return alert(translations[document.getElementById('langSwitcher').value].alert);
+
+        isRunning = true;
+        processedFiles = [];
+        finishedCount = 0;
+        totalToProcess = files.length;
+        queue = [...files];
+        startTime = Date.now();
+
+        document.getElementById('statsArea').classList.remove('hidden');
+        document.getElementById('totalProgress').classList.remove('hidden');
+        document.getElementById('downloadZip').classList.add('hidden');
+        document.getElementById('previewArea').innerHTML = "";
+        resizeBtn.disabled = true;
+        stopBtn.style.display = "block";
+
+        startETATimer();
+
+        const limit = parseInt(document.getElementById('parallelLimit').value);
+        // On lance exactement le nombre de "runners" spécifié
+        const runners = [];
+        for(let i=0; i < Math.min(limit, totalToProcess); i++) {
+            runners.push(processQueue());
+        }
+        await Promise.all(runners);
+
+        if (isRunning) {
+            clearInterval(etaInterval);
+            resizeBtn.disabled = false;
+            stopBtn.style.display = "none";
+            document.getElementById('downloadZip').classList.remove('hidden');
+        }
+    });
+
+    async function processQueue() {
+        while (isRunning && queue.length > 0) {
+            const file = queue.shift();
+            const taskRow = createTaskRow(file.name);
+            const fill = taskRow.querySelector('.progress-fill');
+            const pctText = taskRow.querySelector('.task-pct');
+
+            try {
+                const result = await resizeImage(file, (p) => {
+                    fill.style.width = p + "%";
+                    pctText.innerText = p + "%";
+                });
+                
+                if (isRunning && result) {
+                    processedFiles.push({ name: `res_${file.name.split('.')[0]}.png`, blob: result.blob });
+                    addPreview(result.url, file.name, result.w, result.h);
+                    finishedCount++;
+                    updateGlobalStats();
+                }
+            } catch (e) { console.error(e); }
+            taskRow.remove();
+        }
+    }
+
+    function resizeImage(file, onProgress) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (e) => {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const method = document.getElementById('method').value;
+                    const mode = document.getElementById('resizeMode').value;
+
+                    let w, h;
+                    if(mode === 'percent') {
+                        const pctVal = parseFloat(document.getElementById('targetPercent').value) || 50;
+                        const pct = pctVal / 100;
+                        w = Math.round(img.width * pct);
+                        h = Math.round(img.height * pct);
+                    } else {
+                        w = parseInt(document.getElementById('targetWidth').value) || 800;
+                        h = parseInt(document.getElementById('targetHeight').value) || 600;
+                    }
+                    
+                    canvas.width = w;
+                    canvas.height = h;
+
+                    // --- RÉPARATION PIXEL ART ---
+                    // On définit le lissage APRÈS avoir réglé la taille du canvas
+                    if (method === 'pixelated') {
+                        ctx.imageSmoothingEnabled = false;
+                        ctx.webkitImageSmoothingEnabled = false;
+                        ctx.mozImageSmoothingEnabled = false;
+                        ctx.msImageSmoothingEnabled = false;
+                    } else {
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = method; // 'high' ou 'medium'
+                    }
+
+                    // Simulation de progression linéaire
+                    let currentP = 0;
+                    const timer = setInterval(() => {
+                        if (!isRunning) { clearInterval(timer); resolve(null); return; }
+                        currentP += 5;
+                        onProgress(Math.min(currentP, 100));
+                        
+                        if (currentP >= 100) {
+                            clearInterval(timer);
+                            // On dessine l'image finale
+                            ctx.drawImage(img, 0, 0, w, h);
+                            const url = canvas.toDataURL('image/png');
+                            canvas.toBlob(blob => {
+                                resolve({ blob, url, w, h });
+                            }, 'image/png');
+                        }
+                    }, 15);
+                };
+            };
+        });
+    }
+
+    function startETATimer() {
+        clearInterval(etaInterval);
+        etaInterval = setInterval(() => {
+            if (!isRunning) return;
+            const elapsed = (Date.now() - startTime) / 1000;
+            const speed = finishedCount / elapsed;
+            const remaining = totalToProcess - finishedCount;
+            
+            if (speed > 0) {
+                const eta = Math.ceil(remaining / speed);
+                document.getElementById('statETA').innerText = eta + "s";
+                document.getElementById('statImgSec').innerText = speed.toFixed(1);
+            }
+        }, 100);
+    }
+
+    function updateGlobalStats() {
+        document.getElementById('statCount').innerText = `${finishedCount} / ${totalToProcess}`;
+        const pct = Math.round((finishedCount / totalToProcess) * 100);
+        document.getElementById('totalFill').style.width = pct + "%";
+        document.getElementById('totalPctText').innerText = pct + "%";
+    }
+
+    function createTaskRow(name) {
+        const div = document.createElement('div');
+        div.className = 'task-row';
+        div.innerHTML = `<div class="task-info"><span>${name}</span><span class="task-pct">0%</span></div><div class="progress-bar"><div class="progress-fill"></div></div>`;
+        document.getElementById('activeTasks').appendChild(div);
+        return div;
+    }
+
+    function addPreview(url, name, w, h) {
+        const div = document.createElement('div');
+        div.className = 'preview-item';
+        div.innerHTML = `
+            <img src="${url}">
+            <span class="preview-dim">${w} x ${h} px</span>
+            <p style="margin:5px 0 0 0; overflow:hidden; text-overflow:ellipsis;">${name}</p>
+        `;
+        document.getElementById('previewArea').appendChild(div);
+    }
+
+    document.getElementById('downloadZip').addEventListener('click', () => {
+        const zip = new JSZip();
+        processedFiles.forEach(f => zip.file(f.name, f.blob));
+        zip.generateAsync({type: "blob"}).then(c => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(c);
+            a.download = "images_ultra_engine_export.zip";
+            a.click();
+        });
+    });
+
+    document.getElementById('langSwitcher').addEventListener('change', (e) => {
+        const lang = e.target.value;
+        document.querySelectorAll('[data-key]').forEach(el => {
+            const key = el.getAttribute('data-key');
+            if (translations[lang][key]) el.innerText = translations[lang][key];
+        });
+    });
+</script>
+</body>
+</html>
