@@ -120,7 +120,7 @@
             <h1 data-key="title">Bulk Resizer !</h1>
             <div class="global-counter-badge">
                 <span data-key="counterPrefix">avec</span> 
-                <b id="globalCount">...</b> 
+                <b id="globalCount">0</b> 
                 <span data-key="counterSuffix">images resized en tout !</span>
             </div>
         </div>
@@ -240,62 +240,64 @@
         });
     });
 
-    // --- LOGIQUE COMPTEUR MONDIAL STABLE ---
+    // --- LOGIQUE COMPTEUR MONDIAL ULTRA-STABLE ---
     const NAMESPACE = "bulk_resizer_ultra_final_v3";
     const KEY = "global_count";
     const API = `https://api.counterapi.dev/v1/${NAMESPACE}/${KEY}`;
 
-    let serverTotalCount = 0; // La valeur réelle sur le serveur
-    let localSessionCount = 0; // Ce qui a été fait durant cette session
-    let lastSyncedCount = 0; // Pour savoir combien on doit envoyer au serveur
-    let isFetching = false;
+    let baseOthersCount = 0;   // Ce qui appartient aux autres utilisateurs
+    let totalSessionProcessed = 0; // Total traité par nous depuis le début
+    let totalSyncedByUs = 0;   // Ce qui a déjà été confirmé par le serveur
+    let isSyncing = false;
 
     const globalCountEl = document.getElementById('globalCount');
 
-    // Charge la valeur initiale dès l'ouverture
-    async function initCounter() {
+    // Récupère la valeur initiale et met à jour la base
+    async function refreshCounter() {
         try {
             const res = await fetch(API);
             const data = await res.json();
             if (data && data.count !== undefined) {
-                serverTotalCount = data.count;
+                // La base "autres" = Total Serveur - ce que NOUS avons déjà envoyé
+                baseOthersCount = data.count - totalSyncedByUs;
                 renderGlobalUI();
             }
         } catch (e) { 
-            console.log("Erreur initialisation compteur");
-            globalCountEl.innerText = "0";
+            console.log("Erreur de rafraîchissement");
+            // Ne surtout pas mettre à "0" ici, on garde l'ancienne valeur
         }
     }
 
-    // Synchronisation par batch (toutes les 2.5 secondes)
-    async function syncBatch() {
-        const toSync = localSessionCount - lastSyncedCount;
+    // Envoi des nouvelles images par paquets
+    async function syncNewImages() {
+        const toSync = totalSessionProcessed - totalSyncedByUs;
         
-        if (toSync > 0 && !isFetching) {
-            isFetching = true;
+        if (toSync > 0 && !isSyncing) {
+            isSyncing = true;
             try {
                 const res = await fetch(`${API}/up?amount=${toSync}`);
                 const data = await res.json();
                 if (data && data.count !== undefined) {
-                    serverTotalCount = data.count;
-                    lastSyncedCount = localSessionCount; // On valide l'envoi
+                    // On valide ce paquet
+                    totalSyncedByUs += toSync;
+                    // On recalcule la base des autres avec le nouveau total
+                    baseOthersCount = data.count - totalSyncedByUs;
                     renderGlobalUI(true);
                 }
             } catch (e) { 
-                console.log("Erreur sync"); 
+                console.log("Erreur de synchronisation"); 
             } finally {
-                isFetching = false;
+                isSyncing = false;
             }
-        } else if (!isFetching) {
-            // Rafraîchissement passif si rien à envoyer
-            initCounter();
+        } else if (!isSyncing) {
+            refreshCounter(); // Simple mise à jour si rien à envoyer
         }
     }
 
     function renderGlobalUI(animate = false) {
-        // Affichage : Base serveur + ce qu'on a fait localement et qui n'est pas encore sur le serveur
-        const displayValue = serverTotalCount + (localSessionCount - lastSyncedCount);
-        globalCountEl.innerText = displayValue.toLocaleString();
+        // Affichage = Base (autres) + Notre total de session (synchro ou non)
+        const currentDisplay = baseOthersCount + totalSessionProcessed;
+        globalCountEl.innerText = currentDisplay.toLocaleString();
         
         if (animate) {
             globalCountEl.classList.remove('pulse');
@@ -305,10 +307,10 @@
     }
 
     // Démarrage immédiat
-    initCounter();
-    setInterval(syncBatch, 2500);
+    refreshCounter();
+    setInterval(syncNewImages, 3000); // Sync toutes les 3s pour éviter le spam
 
-    // --- MOTEUR ULTRA ---
+    // --- MOTEUR RESIZER ---
     let processedFiles = [];
     let isRunning = false;
     let queue = [];
@@ -371,8 +373,8 @@
                     addPreview(result.url, file.name, result.w, result.h);
                     finishedCount++;
                     
-                    // On incrémente le local pour l'affichage temps réel
-                    localSessionCount++;
+                    // Incrément local IMMÉDIAT pour la fluidité
+                    totalSessionProcessed++;
                     renderGlobalUI(false); 
                     
                     updateSessionStats();
