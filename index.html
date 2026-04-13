@@ -65,7 +65,7 @@
         .dimension-inputs { display: flex; gap: 8px; }
         .dimension-inputs input { width: 50%; }
 
-        /* DASHBOARD STATISTIQUES (Sous les réglages) */
+        /* DASHBOARD STATISTIQUES */
         .stats-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .stat-card { background: white; padding: 15px; border-radius: 10px; border: 1px solid #e5e7eb; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
         .stat-val { display: block; font-size: 22px; font-weight: 900; color: var(--primary); }
@@ -120,7 +120,7 @@
             <h1 data-key="title">Bulk Resizer !</h1>
             <div class="global-counter-badge">
                 <span data-key="counterPrefix">avec</span> 
-                <b id="globalCount">0</b> 
+                <b id="globalCount">...</b> 
                 <span data-key="counterSuffix">images resized en tout !</span>
             </div>
         </div>
@@ -240,47 +240,63 @@
         });
     });
 
-    // --- LOGIQUE COMPTEUR MONDIAL ROBUSTE ---
+    // --- LOGIQUE COMPTEUR MONDIAL STABLE ---
     const NAMESPACE = "bulk_resizer_ultra_final_v3";
     const KEY = "global_count";
     const API = `https://api.counterapi.dev/v1/${NAMESPACE}/${KEY}`;
 
-    let serverBaseCount = 0; 
-    let localSessionCount = 0; 
-    let syncPending = 0; 
+    let serverTotalCount = 0; // La valeur réelle sur le serveur
+    let localSessionCount = 0; // Ce qui a été fait durant cette session
+    let lastSyncedCount = 0; // Pour savoir combien on doit envoyer au serveur
+    let isFetching = false;
 
     const globalCountEl = document.getElementById('globalCount');
 
-    async function fetchServerCount() {
+    // Charge la valeur initiale dès l'ouverture
+    async function initCounter() {
         try {
             const res = await fetch(API);
             const data = await res.json();
             if (data && data.count !== undefined) {
-                // On ajuste la base pour que base + locale = total serveur
-                serverBaseCount = data.count - localSessionCount;
+                serverTotalCount = data.count;
                 renderGlobalUI();
             }
-        } catch (e) { console.log("Init counter fail"); }
+        } catch (e) { 
+            console.log("Erreur initialisation compteur");
+            globalCountEl.innerText = "0";
+        }
     }
 
-    async function pushSync() {
-        if (syncPending > 0) {
-            const amount = syncPending;
-            syncPending = 0;
+    // Synchronisation par batch (toutes les 2.5 secondes)
+    async function syncBatch() {
+        const toSync = localSessionCount - lastSyncedCount;
+        
+        if (toSync > 0 && !isFetching) {
+            isFetching = true;
             try {
-                const res = await fetch(`${API}/up?amount=${amount}`);
+                const res = await fetch(`${API}/up?amount=${toSync}`);
                 const data = await res.json();
-                serverBaseCount = data.count - localSessionCount;
-            } catch (e) { syncPending += amount; }
-        } else {
-            fetchServerCount(); // Simple refresh si pas d'activité
+                if (data && data.count !== undefined) {
+                    serverTotalCount = data.count;
+                    lastSyncedCount = localSessionCount; // On valide l'envoi
+                    renderGlobalUI(true);
+                }
+            } catch (e) { 
+                console.log("Erreur sync"); 
+            } finally {
+                isFetching = false;
+            }
+        } else if (!isFetching) {
+            // Rafraîchissement passif si rien à envoyer
+            initCounter();
         }
-        renderGlobalUI(true);
     }
 
     function renderGlobalUI(animate = false) {
-        const total = serverBaseCount + localSessionCount + syncPending;
-        globalCountEl.innerText = total.toLocaleString();
+        // Affichage : Base serveur + ce qu'on a fait localement et qui n'est pas encore sur le serveur
+        const displayValue = serverTotalCount + (localSessionCount - lastSyncedCount);
+        globalCountEl.innerText = displayValue.toLocaleString();
+        
         if (animate) {
             globalCountEl.classList.remove('pulse');
             void globalCountEl.offsetWidth;
@@ -288,9 +304,9 @@
         }
     }
 
-    // Init & Boucle
-    fetchServerCount();
-    setInterval(pushSync, 2000);
+    // Démarrage immédiat
+    initCounter();
+    setInterval(syncBatch, 2500);
 
     // --- MOTEUR ULTRA ---
     let processedFiles = [];
@@ -355,9 +371,9 @@
                     addPreview(result.url, file.name, result.w, result.h);
                     finishedCount++;
                     
+                    // On incrémente le local pour l'affichage temps réel
                     localSessionCount++;
-                    syncPending++;
-                    renderGlobalUI(false); // Update immédiat sans pulse pour fluidité
+                    renderGlobalUI(false); 
                     
                     updateSessionStats();
                 }
@@ -388,11 +404,8 @@
                     }
                     canvas.width = w; canvas.height = h;
 
-                    // GESTION QUALITÉ / PIXEL ART
                     if (method === 'pixelated') {
                         ctx.imageSmoothingEnabled = false;
-                        ctx.webkitImageSmoothingEnabled = false;
-                        ctx.mozImageSmoothingEnabled = false;
                     } else {
                         ctx.imageSmoothingEnabled = true;
                         ctx.imageSmoothingQuality = method; 
