@@ -146,7 +146,7 @@
         </div>
         <div id="percentGroup" class="control-group hidden">
             <label data-key="labelPercent">Échelle de sortie (%)</label>
-            <input type="number" id="targetPercent" value="50" min="1" max="1000">
+            <input type="number" id="targetPercent" value="50" min="1" max="10000">
         </div>
         <div class="control-group">
             <label data-key="labelMethod">Rendu / Qualité</label>
@@ -158,7 +158,7 @@
         </div>
         <div class="control-group">
             <label data-key="labelParallel">Parallélisme (CPU Tasks)</label>
-            <input type="number" id="parallelLimit" value="4" min="1" max="16">
+            <input type="number" id="parallelLimit" value="4" min="1" max="24">
         </div>
     </div>
 
@@ -234,8 +234,8 @@
     });
 
     // --- CONFIGURATION API ---
-    const API_INC = "http://mcgamer.servegame.com:25575/hit?name=image";
-    const API_GET = "http://mcgamer.servegame.com:25575/get?name=image";
+    const API_INC = "https://nathmen-count.loca.lt/hit?name=image";
+    const API_GET = "https://nathmen-count.loca.lt/get?name=image";
 
     let currentServerValue = 0;
     const globalCountEl = document.getElementById('globalCount');
