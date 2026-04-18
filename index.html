@@ -358,7 +358,7 @@
                 });
 
                 if (result && isRunning) {
-                    processedFiles.push({ name: `res_${file.name.split('.')[0]}.png`, blob: result.blob });
+                    processedFiles.push({ name: `${file.name.split('.')[0]}.png`, blob: result.blob });
                     addPreview(result.url, file.name, result.w, result.h);
                     finishedCount++;
                     updateSessionStats();
